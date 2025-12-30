@@ -1,17 +1,14 @@
-// content.js - with QUERIES filled in
+// content.js - more robust detection + verbose logging
 (function () {
-  // Always log immediately so we can detect if the script is injected at all
   console.log("AutoBing content script loaded (injected).");
-  // Global marker for manual checks from page console
   window.__AutoBing_Installed = true;
 
   function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
   let debug = false;
-
-  // Load debug setting from storage
   chrome.storage.local.get("debug", (data)=>{
     debug = data.debug || false;
+    console.log("AutoBing: debug =", debug);
     if(debug) console.log("AutoBing Debug Mode: ON");
   });
 
@@ -77,36 +74,149 @@
     "simple home workout routines"
   ];
 
-  async function typeLikeHuman(input, text){
-    if(debug) console.log("Typing query:", text);
+  // Helpers to log if debug is on
+  function dlog(...args){
+    if(debug) console.log("AutoBing:", ...args);
+  }
+
+  // Try to find the search target on the page.
+  function findSearchTarget() {
+    // Common input selectors
+    const inputSelectors = [
+      'input[name="q"]',
+      'input[aria-label="Enter your search term"]',
+      'input[type="search"]',
+      'input[role="combobox"]',
+      'input[aria-label*="Search"]'
+    ];
+    for (const sel of inputSelectors) {
+      const el = document.querySelector(sel);
+      if (el) return {type: "input", el, selector: sel};
+    }
+
+    // Some sites (or future Bing) use a contenteditable element (div) for search.
+    // Look for common attributes or role combobox / searchbox
+    const contentEditableSelectors = [
+      '[contenteditable="true"]',
+      'div[role="search"] [contenteditable="true"]',
+      'div[role="combobox"][contenteditable="true"]',
+      'div[role="search"] div[role="combobox"]'
+    ];
+    for (const sel of contentEditableSelectors) {
+      const el = document.querySelector(sel);
+      if (el) return {type: "contenteditable", el, selector: sel};
+    }
+
+    // Fallback: try first input on page
+    const firstInput = document.querySelector('input');
+    if (firstInput) return {type: "input", el: firstInput, selector: "input (first found)"};
+
+    return null;
+  }
+
+  // Set text into input-type elements
+  async function setInputValue(input, text){
     try {
+      dlog("Setting input.value for", input, "text:", text);
       input.focus();
-      // Some sites reject direct .value assignment — try using input.value first
       input.value = "";
-      for(let char of text){
-        input.value += char;
-        input.dispatchEvent(new Event("input",{bubbles:true}));
-        await sleep(100 + Math.random()*100);
+      // simulate typing (character by character) to better trigger frameworks
+      for (let ch of text) {
+        // For some frameworks, setRangeText + dispatchEvent is more reliable
+        const start = input.value.length;
+        input.setRangeText(ch, start, start, "end");
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
+        await sleep(60 + Math.random()*80);
       }
-      await sleep(300);
-      if(debug) console.log("Submitting query...");
-      // Dispatch enter key events to submit
-      input.dispatchEvent(new KeyboardEvent('keydown', {key:"Enter", bubbles:true}));
-      input.dispatchEvent(new KeyboardEvent('keyup', {key:"Enter", bubbles:true}));
+      await sleep(200);
+      dlog("Value set, final value:", input.value);
+      return true;
     } catch (e) {
-      console.error("typeLikeHuman error:", e);
+      console.error("setInputValue error:", e);
+      return false;
     }
   }
 
-  async function waitForInput(){
-    while(true){
-      // Cover common Bing input selectors; adjust if Bing updates markup
-      let input = document.querySelector('input[name="q"], input[aria-label="Enter your search term"], input[type="search"]');
-      if(input){
-        if(debug) console.log("Found search input!");
-        return input;
+  // Set text into contenteditable elements
+  async function setContentEditable(el, text){
+    try {
+      dlog("Setting contenteditable for", el, "text:", text);
+      el.focus();
+      // Clear
+      if ('innerText' in el) el.innerText = "";
+      // Insert character by character, dispatch input events
+      for (let ch of text) {
+        // Insert text at end
+        document.execCommand('insertText', false, ch);
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
+        await sleep(60 + Math.random()*80);
       }
-      if(debug) console.log("Waiting for search input...");
+      await sleep(200);
+      dlog("contenteditable set, final text:", el.innerText || el.textContent);
+      return true;
+    } catch (e) {
+      console.error("setContentEditable error:", e);
+      return false;
+    }
+  }
+
+  // Try multiple ways to submit the search
+  function trySubmit(el){
+    dlog("Attempting to submit for element:", el);
+
+    // 1) Try Enter key on the element
+    try {
+      el.dispatchEvent(new KeyboardEvent('keydown', {key: "Enter", bubbles: true}));
+      el.dispatchEvent(new KeyboardEvent('keyup', {key: "Enter", bubbles: true}));
+      dlog("Dispatched Enter key events.");
+    } catch (e) { dlog("Enter dispatch error:", e); }
+
+    // 2) Find a nearby submit button and click it
+    try {
+      let btn = document.querySelector('button[type="submit"], input[type="submit"], button[aria-label*="Search"], button[title*="Search"]');
+      if (btn) {
+        dlog("Clicking submit button:", btn);
+        btn.click();
+        return;
+      }
+    } catch (e) { dlog("Click submit button error:", e); }
+
+    // 3) Submit the enclosing form if present
+    try {
+      let form = el.closest('form');
+      if (form) {
+        dlog("Submitting enclosing form:", form);
+        form.submit();
+        return;
+      }
+    } catch (e) { dlog("Form submit error:", e); }
+
+    dlog("No explicit submit method worked; rely on Enter events.");
+  }
+
+  // High-level typing routine that supports both input and contenteditable
+  async function typeLikeHumanGeneric(targetInfo, text){
+    const {type, el} = targetInfo;
+    let ok = false;
+    if (type === "input") {
+      ok = await setInputValue(el, text);
+    } else if (type === "contenteditable") {
+      ok = await setContentEditable(el, text);
+    }
+
+    await sleep(250 + Math.random()*100);
+    if (!ok) console.warn("AutoBing: failed to set text into target, but will try to submit anyway.");
+    trySubmit(el);
+  }
+
+  async function waitForTarget(){
+    while (true) {
+      const found = findSearchTarget();
+      if (found) {
+        dlog("Found search target:", found.selector, found.el);
+        return found;
+      }
+      dlog("Waiting for search target...");
       await sleep(200);
     }
   }
@@ -115,7 +225,6 @@
     while(true){
       const status = await new Promise(r=>{
         chrome.runtime.sendMessage({action:"status"}, response=>{
-          // Defensive: handle undefined response
           r(response && response.running);
         });
       });
@@ -125,15 +234,16 @@
         continue;
       }
 
-      const input = await waitForInput();
+      dlog("Automation active: locating target...");
+      const target = await waitForTarget();
       const query = QUERIES[Math.floor(Math.random()*QUERIES.length)];
-      await sleep(500 + Math.random()*500);
-      await typeLikeHuman(input, query);
-      if(debug) console.log("Waiting 5 seconds before next search...");
-      await sleep(5000);
+      dlog("Selected query:", query);
+      await sleep(300 + Math.random()*700);
+      await typeLikeHumanGeneric(target, query);
+      dlog("Typed one query, sleeping before next...");
+      await sleep(5000 + Math.random()*3000);
     }
   }
 
-  // Start the automation loop
   runAutomation().catch(e => console.error("AutoBing runAutomation error:", e));
 })();
