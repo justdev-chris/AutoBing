@@ -1,13 +1,29 @@
+
 {
   "manifest_version": 3,
   "name": "AutoBing",
   "version": "1.0",
-  "description": "Educational Bing search automation with human-like typing. Not affiliated with Microsoft.",
-  "permissions": ["tabs", "scripting", "storage"],
-  "host_permissions": ["https://www.bing.com/*"],
-  "background": { "service_worker": "background.js" },
-  "action": { "default_popup": "popup.html" },
+  "description": "Educational only — human-like Bing searches",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AutoBing"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.bing.com/*",
+    "https://bing.com/*"
+  ],
   "content_scripts": [
-    { "matches": ["https://www.bing.com/*"], "js": ["content.js"] }
+    {
+      "matches": ["https://www.bing.com/*", "https://bing.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
   ]
 }
