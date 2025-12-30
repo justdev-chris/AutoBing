@@ -1,6 +1,4 @@
 let running = false;
-let index = 0;
-let timer = null;
 
 const QUERIES = [
   "technology news","space exploration","gaming updates","open source software",
@@ -20,29 +18,16 @@ const QUERIES = [
 ];
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === "start" && !running) {
-    running = true;
-    index = 0;
-    loop();
-  }
-
-  if (msg.action === "stop") {
-    running = false;
-    clearTimeout(timer);
-  }
+  if(msg.action==="start") running=true;
+  if(msg.action==="stop") running=false;
 });
 
-function loop() {
-  if (!running) return;
-
-  const query = QUERIES[Math.floor(Math.random() * QUERIES.length)];
-
-  chrome.tabs.create(
-    { url: "https://www.bing.com", active: true },
-    (tab) => {
-      chrome.storage.local.set({ currentQuery: query });
-    }
-  );
-
-  timer = setTimeout(loop, 5000); // wait 5 seconds
-}
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if(running && tab.url.includes("bing.com") && changeInfo.status==="complete"){
+    const query = QUERIES[Math.floor(Math.random()*QUERIES.length)];
+    chrome.scripting.executeScript({
+      target: {tabId: tabId},
+      func: (q) => { localStorage.setItem("nextQuery", q); }
+    , args:[query]});
+  }
+});
