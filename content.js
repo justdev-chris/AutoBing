@@ -23,10 +23,18 @@ async function typeLikeHuman(input, text){
   for(let char of text){
     input.value += char;
     input.dispatchEvent(new Event("input",{bubbles:true}));
-    await sleep(120 + Math.random()*100); // human-like typing
+    await sleep(120 + Math.random()*100);
   }
   await sleep(300);
   input.form.submit();
+}
+
+async function waitForInput(){
+  while(true){
+    let input = document.querySelector('input[name="q"]');
+    if(input) return input;
+    await sleep(200); // check every 200ms
+  }
 }
 
 async function runAutomation(){
@@ -34,19 +42,17 @@ async function runAutomation(){
     const status = await new Promise(r=>{
       chrome.runtime.sendMessage({action:"status"}, response=>r(response.running));
     });
-
+    
     if(!status){
       await sleep(500);
       continue;
     }
 
-    const input = document.querySelector('input[name="q"]');
-    if(!input){ await sleep(500); continue; }
-
+    const input = await waitForInput(); // wait until search bar exists
     const query = QUERIES[Math.floor(Math.random()*QUERIES.length)];
-    await sleep(800); // wait for page load feel
+    await sleep(800); // page feel
     await typeLikeHuman(input, query);
-    await sleep(5000); // wait 5 seconds on results page before next
+    await sleep(5000); // wait 5s after results
   }
 }
 
