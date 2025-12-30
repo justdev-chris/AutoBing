@@ -1,7 +1,7 @@
 document.getElementById("start").onclick = () => {
-  chrome.runtime.sendMessage({ action: "start" });
+  chrome.runtime.sendMessage({action:"start"});
 };
 
 document.getElementById("stop").onclick = () => {
-  chrome.runtime.sendMessage({ action: "stop" });
+  chrome.runtime.sendMessage({action:"stop"});
 };
