@@ -2,19 +2,12 @@
   "manifest_version": 3,
   "name": "AutoBing",
   "version": "1.0",
-  "description": "Automates Bing searches for testing browser extension behavior. Not affiliated with Microsoft.",
+  "description": "Educational Bing search automation with human-like typing. Not affiliated with Microsoft.",
   "permissions": ["tabs", "scripting", "storage"],
   "host_permissions": ["https://www.bing.com/*"],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "action": {
-    "default_popup": "popup.html"
-  },
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html" },
   "content_scripts": [
-    {
-      "matches": ["https://www.bing.com/*"],
-      "js": ["content.js"]
-    }
+    { "matches": ["https://www.bing.com/*"], "js": ["content.js"] }
   ]
 }
